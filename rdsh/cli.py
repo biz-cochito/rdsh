@@ -26,16 +26,16 @@ def build_parser():
     subparsers = parser.add_subparsers(dest="command")
 
     unrestrict_parser = subparsers.add_parser("unrestrict", help="Unrestrict a hosted link")
-    unrestrict_parser.add_argument("value", help="Hosted link, magnet link, or .torrent path")
+    unrestrict_parser.add_argument("values", nargs="+", help="Hosted links, magnet links, or .torrent paths")
 
     magnet_parser = subparsers.add_parser("add-magnet", help="Add a magnet link")
-    magnet_parser.add_argument("magnet_link", help="Magnet URI to add")
+    magnet_parser.add_argument("magnet_links", nargs="+", help="Magnet URIs to add")
 
     torrent_parser = subparsers.add_parser("add-torrent", help="Add a .torrent file")
-    torrent_parser.add_argument("file_path", help="Path to a .torrent file")
+    torrent_parser.add_argument("file_paths", nargs="+", help="Paths to .torrent files")
 
     info_parser = subparsers.add_parser("torrent-info", help="Show info for a torrent id")
-    info_parser.add_argument("torrent_id", help="Real-Debrid torrent id")
+    info_parser.add_argument("torrent_ids", nargs="+", help="Real-Debrid torrent ids")
 
     list_parser = subparsers.add_parser("list-torrents", help="List available torrents")
     list_parser.add_argument("--page", type=int, default=1, help="Results page to fetch")
@@ -47,19 +47,23 @@ def build_parser():
 
 def dispatch_command(client, args):
     if args.command == "unrestrict":
-        handle_input(client, args.value)
+        for val in args.values:
+            handle_input(client, val)
         return
 
     if args.command == "add-magnet":
-        handle_input(client, args.magnet_link)
+        for link in args.magnet_links:
+            handle_input(client, link)
         return
 
     if args.command == "add-torrent":
-        handle_input(client, args.file_path)
+        for path in args.file_paths:
+            handle_input(client, path)
         return
 
     if args.command == "torrent-info":
-        show_torrent_info(client, args.torrent_id)
+        for torrent_id in args.torrent_ids:
+            show_torrent_info(client, torrent_id)
         return
 
     if args.command == "list-torrents":
@@ -78,12 +82,10 @@ def run(argv=None):
         raise SystemExit(1)
 
     try:
-        if argv[0].startswith("magnet:") or argv[0].lower().endswith(".torrent"):
-            handle_input(build_client(), argv[0])
-            return
-
-        if len(argv) == 1 and "://" in argv[0]:
-            handle_input(build_client(), argv[0])
+        if argv[0].startswith("magnet:") or argv[0].lower().endswith(".torrent") or "://" in argv[0]:
+            client = build_client()
+            for arg in argv:
+                handle_input(client, arg)
             return
 
         args = parser.parse_args(argv)
