@@ -84,6 +84,22 @@ def test_run_dispatches_list_torrents_subcommand(monkeypatch):
     assert calls == [(client, 2, 25, "downloaded")]
 
 
+def test_run_dispatches_mpv_subcommand(monkeypatch):
+    client = object()
+    calls = []
+
+    monkeypatch.setattr(cli, "build_client", lambda: client)
+    monkeypatch.setattr(
+        cli,
+        "play_magnet_in_mpv",
+        lambda built_client, magnet: calls.append((built_client, magnet)),
+    )
+
+    cli.run(["mpv", "magnet:?xt=urn:btih:abc"])
+
+    assert calls == [(client, "magnet:?xt=urn:btih:abc")]
+
+
 def test_run_exits_with_usage_when_no_args(capsys):
     with pytest.raises(SystemExit) as exc_info:
         cli.run([])

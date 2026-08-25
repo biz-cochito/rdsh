@@ -1,31 +1,61 @@
+import json
+import subprocess
 import time
 from pathlib import Path
-import json
 
+from rdsh.client import RealDebridClient
 from rdsh.config import POLL_INTERVAL_SECONDS, POLL_TIMEOUT_SECONDS
+
+
+def play_magnet_in_mpv(client, magnet: str):
+    result = client.add_magnet(magnet)
+    torrent_id = result.get("id") if isinstance(result, dict) else None
+
+    if not torrent_id:
+        raise RuntimeError(
+            "Real-Debrid did not return a torrent id for the magnet link."
+        )
+    wait_for_status(client, torrent_id, "waiting_files_selection")
+    select_all_files(client, torrent_id)
+    links = print_unrestricted_torrent_links(client, torrent_id)
+
+    if not links:
+        print("No links found")
+        return
+    subprocess.run(["mpv", links[0]])
 
 
 def unrestrict_link(client, host_link):
     result = client.unrestrict_link(host_link)
-    print(f"Direct Link: {result.get('download')}")
+    download = result.get("download") if isinstance(result, dict) else None
+    print(download)
+    return download
 
 
 def get_torrent_info(client, torrent_id):
     return client.get_torrent_info(torrent_id)
 
 
-def wait_for_status(client, torrent_id, expected_status):
+def wait_for_status(client, torrent_id: str, expected_status: str):
     deadline = time.time() + POLL_TIMEOUT_SECONDS
+    status = None
 
     while time.time() < deadline:
         info = get_torrent_info(client, torrent_id)
-        status = info.get("status")
+        if isinstance(info, dict):
+            status = info.get("status")
 
-        if status == expected_status:
-            return info
+            if status == expected_status:
+                return info
 
-        if status in {"error", "virus", "dead"}:
-            raise RuntimeError(f"Torrent failed with status '{status}'.")
+            if expected_status == "waiting_files_selection" and status in {
+                "downloading",
+                "downloaded",
+            }:
+                return info
+
+            if status in {"error", "virus", "dead"}:
+                raise RuntimeError(f"Torrent failed with status '{status}'.")
 
         time.sleep(POLL_INTERVAL_SECONDS)
 
@@ -40,14 +70,20 @@ def select_all_files(client, torrent_id):
 
 def print_unrestricted_torrent_links(client, torrent_id):
     info = wait_for_status(client, torrent_id, "downloaded")
-    links = info.get("links", [])
+    links = info.get("links", []) if isinstance(info, dict) else []
 
     if not links:
         raise RuntimeError("Torrent completed but no downloadable links were returned.")
 
+    unrestricted_links = []
     for link in links:
         result = client.unrestrict_link(link)
-        print(f"Direct Link: {result.get('download')}")
+        download = result.get("download") if isinstance(result, dict) else None
+        print(download)
+        if download:
+            unrestricted_links.append(download)
+
+    return unrestricted_links
 
 
 def handle_magnet_link(client, magnet_link):

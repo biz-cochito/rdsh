@@ -161,6 +161,49 @@ def test_show_torrent_info_prints_json(capsys):
     assert '"status": "downloaded"' in captured.out
 
 
+def test_play_magnet_in_mpv(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        def add_magnet(self, magnet_link):
+            calls.append(("add_magnet", magnet_link))
+            return {"id": "torrent-789"}
+
+    client = FakeClient()
+
+    monkeypatch.setattr(
+        commands,
+        "wait_for_status",
+        lambda current_client, torrent_id, status: calls.append(
+            ("wait", torrent_id, status)
+        ),
+    )
+    monkeypatch.setattr(
+        commands,
+        "select_all_files",
+        lambda current_client, torrent_id: calls.append(("select", torrent_id)),
+    )
+    monkeypatch.setattr(
+        commands,
+        "print_unrestricted_torrent_links",
+        lambda current_client, torrent_id: ["https://direct.stream/link.mkv"],
+    )
+    monkeypatch.setattr(
+        commands.subprocess,
+        "run",
+        lambda cmd: calls.append(("subprocess", cmd)),
+    )
+
+    commands.play_magnet_in_mpv(client, "magnet:?xt=urn:btih:xyz")
+
+    assert calls == [
+        ("add_magnet", "magnet:?xt=urn:btih:xyz"),
+        ("wait", "torrent-789", "waiting_files_selection"),
+        ("select", "torrent-789"),
+        ("subprocess", ["mpv", "https://direct.stream/link.mkv"]),
+    ]
+
+
 def test_list_torrents_prints_json(capsys):
     class FakeClient:
         def list_torrents(self, page=1, limit=None, status=None):
