@@ -126,6 +126,10 @@ def delete_torrent(client, torrent_id):
     torrent_info = client.get_torrent_info(torrent_id)
     torrent_name = torrent_info.get("filename") if torrent_info else None
     if torrent_info:
+        confirm = input(f"Are you sure you want to delete {torrent_name}? (y/n): ")
+        if confirm.lower() != 'y':
+            print("Deletion cancelled.")
+            return
         print(f"Deleting item: {torrent_name}")
     else:
         print(f"Item not found: {torrent_id}")
