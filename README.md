@@ -2,18 +2,10 @@
 
 A lightweight CLI tool for interacting with the [Real-Debrid](https://real-debrid.com) API.
 
-## Features
-
-- **Direct Link Resolution**: Unrestrict hosted URLs, magnet links, and local `.torrent` files directly.
-- **Automated Torrent Flow**: Waits for file selection, selects all files, polls until download completes, and returns unrestricted direct links.
-- **Account & Torrent Management**: List account torrents and inspect torrent details in JSON format.
-- **Media Player Integration**: Stream magnet links directly in `mpv`.
-
 ## Prerequisites
 
 - Python 3.11+
 - Real-Debrid API token (available from [Real-Debrid API Settings](https://real-debrid.com/apitoken))
-- Optional: `mpv` (for streaming media directly)
 
 ## Setup & Installation
 
@@ -25,86 +17,81 @@ Export your Real-Debrid API token as an environment variable:
 export REAL_DEBRID_API_TOKEN="your-api-token-here"
 ```
 
-To make this persistent across terminal sessions, add the export to your shell configuration (e.g., `~/.bashrc` or `~/.zshrc`).
+### 2. Install
 
-### 2. Install the Package
-
-#### Using `uv` (recommended)
+#### Option A: Using `uv tool` (Recommended)
 
 ```bash
-uv pip install -e .
+uv tool install .
 ```
 
-#### Using `pip`
+Or install in editable mode (so local code updates take effect automatically):
+
+```bash
+uv tool install --editable .
+```
+
+_Note: Make sure `~/.local/bin` is in your `$PATH`. You can run `uv tool update-shell` to handle this._
+
+#### Option B: Using `pipx`
+
+```bash
+pipx install .
+```
+
+#### Option C: Virtual Environment / `pip`
 
 ```bash
 pip install -e .
 ```
 
-Once installed, the `rdsh` CLI tool will be available globally in your Python environment.
-
 ---
 
 ## Usage
 
-### Positional Inputs (Quick Usage)
+### Direct Inputs (Recommended)
 
-Pass URLs, magnet links, or `.torrent` file paths directly to `rdsh`:
+When adding links or torrents, `rdsh` adds them to your Real-Debrid account and immediately prints a summary of your account's **in-progress downloads** and **failed downloads count**, without blocking or waiting for downloads to complete:
 
 ```bash
 # Unrestrict a hosted link
 rdsh "https://example.com/file"
 
-# Add a magnet link and output direct links
+# Add a magnet link to account
 rdsh "magnet:?xt=urn:btih:..."
 
 # Add a local .torrent file
 rdsh "/path/to/file.torrent"
 
-# Process multiple inputs sequentially
+# Process multiple mixed inputs sequentially
 rdsh "https://example.com/file1" "magnet:?xt=..." "/path/to/file2.torrent"
 ```
 
+---
+
 ### Subcommands
 
-#### `unrestrict`
-Unrestrict hosted links, magnet URIs, or `.torrent` files:
-```bash
-rdsh unrestrict "https://example.com/file1" "https://example.com/file2"
-```
+#### List Account Torrents (`list-torrents`)
 
-#### `add-magnet`
-Add magnet link(s) to Real-Debrid and resolve direct download URLs:
-```bash
-rdsh add-magnet "magnet:?xt=urn:btih:..."
-```
+List torrents associated with your Real-Debrid account:
 
-#### `add-torrent`
-Upload `.torrent` file(s) and resolve direct download URLs:
 ```bash
-rdsh add-torrent /path/to/file1.torrent /path/to/file2.torrent
-```
-
-#### `mpv`
-Add a magnet link and stream the unrestricted direct link directly in `mpv`:
-```bash
-rdsh mpv "magnet:?xt=urn:btih:..."
-```
-
-#### `torrent-info`
-Display detailed JSON metadata for Real-Debrid torrent ID(s):
-```bash
-rdsh torrent-info <TORRENT_ID>
-```
-
-#### `list-torrents`
-List torrents on your Real-Debrid account:
-```bash
-# Basic list
+# Basic rich-formatted list
 rdsh list-torrents
+
+# Output raw JSON instead
+rdsh list-torrents --json
 
 # Paginate and filter
 rdsh list-torrents --page 2 --limit 20 --status downloaded
+```
+
+#### Inspect Torrent Details (`torrent-info`)
+
+Display detailed JSON metadata for Real-Debrid internal torrent ID(s):
+
+```bash
+rdsh torrent-info <TORRENT_ID>
 ```
 
 ---
