@@ -32,6 +32,7 @@ def test_run_routes_legacy_argument(monkeypatch):
 
     monkeypatch.setattr(cli, "build_client", lambda: client)
     monkeypatch.setattr(cli, "handle_input", lambda built_client, value: calls.append((built_client, value)))
+    monkeypatch.setattr(cli, "display_account_summary", lambda built_client: None)
 
     cli.run(["magnet:?xt=urn:btih:abc"])
 
@@ -44,6 +45,7 @@ def test_run_dispatches_unrestrict_subcommand(monkeypatch):
 
     monkeypatch.setattr(cli, "build_client", lambda: client)
     monkeypatch.setattr(cli, "handle_input", lambda built_client, value: calls.append((built_client, value)))
+    monkeypatch.setattr(cli, "display_account_summary", lambda built_client: None)
 
     cli.run(["unrestrict", "https://example.com/file"])
 
@@ -74,30 +76,36 @@ def test_run_dispatches_list_torrents_subcommand(monkeypatch):
     monkeypatch.setattr(
         cli,
         "list_torrents",
-        lambda built_client, page, limit, status: calls.append(
-            (built_client, page, limit, status)
+        lambda built_client, page, limit, status, json_output: calls.append(
+            (built_client, page, limit, status, json_output)
         ),
     )
 
     cli.run(["list-torrents", "--page", "2", "--limit", "25", "--status", "downloaded"])
+    cli.run(["list-torrents", "--json"])
 
-    assert calls == [(client, 2, 25, "downloaded")]
+    assert calls == [
+        (client, 2, 25, "downloaded", False),
+        (client, 1, None, None, True),
+    ]
 
 
-def test_run_dispatches_mpv_subcommand(monkeypatch):
+def test_run_dispatches_delete_subcommand(monkeypatch):
     client = object()
     calls = []
 
     monkeypatch.setattr(cli, "build_client", lambda: client)
     monkeypatch.setattr(
         cli,
-        "play_magnet_in_mpv",
-        lambda built_client, magnet: calls.append((built_client, magnet)),
+        "delete_torrent",
+        lambda built_client, torrent_id: calls.append((built_client, torrent_id)),
     )
 
-    cli.run(["mpv", "magnet:?xt=urn:btih:abc"])
+    cli.run(["delete", "torrent-123", "torrent-456"])
 
-    assert calls == [(client, "magnet:?xt=urn:btih:abc")]
+    assert calls == [(client, "torrent-123"), (client, "torrent-456")]
+
+
 
 
 def test_run_exits_with_usage_when_no_args(capsys):

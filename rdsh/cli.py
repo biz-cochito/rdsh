@@ -5,9 +5,10 @@ import requests
 
 from rdsh.client import RealDebridClient
 from rdsh.commands import (
+    delete_torrent,
+    display_account_summary,
     handle_input,
     list_torrents,
-    play_magnet_in_mpv,
     show_torrent_info,
 )
 from rdsh.config import API_TOKEN_ENV_VAR, get_api_token
@@ -54,9 +55,12 @@ def build_parser():
     )
     list_parser.add_argument("--limit", type=int, help="Maximum results per page")
     list_parser.add_argument("--status", help="Filter by torrent status")
+    list_parser.add_argument("--json", action="store_true", help="Output raw JSON")
 
-    mpv_parser = subparsers.add_parser("mpv", help="Play a magnet link in mpv")
-    mpv_parser.add_argument("magnet", help="Magnet URI to play in mpv")
+    delete_parser = subparsers.add_parser(
+        "delete", help="Delete one or more torrents by their ids"
+    )
+    delete_parser.add_argument("torrent_ids", nargs="+", help="Real-Debrid torrent ids to delete")
 
     return parser
 
@@ -65,16 +69,19 @@ def dispatch_command(client, args):
     if args.command == "unrestrict":
         for val in args.values:
             handle_input(client, val)
+        display_account_summary(client)
         return
 
     if args.command == "add-magnet":
         for link in args.magnet_links:
             handle_input(client, link)
+        display_account_summary(client)
         return
 
     if args.command == "add-torrent":
         for path in args.file_paths:
             handle_input(client, path)
+        display_account_summary(client)
         return
 
     if args.command == "torrent-info":
@@ -83,11 +90,12 @@ def dispatch_command(client, args):
         return
 
     if args.command == "list-torrents":
-        list_torrents(client, page=args.page, limit=args.limit, status=args.status)
+        list_torrents(client, page=args.page, limit=args.limit, status=args.status, json_output=args.json)
         return
 
-    if args.command == "mpv":
-        play_magnet_in_mpv(client, args.magnet)
+    if args.command == "delete":
+        for torrent_id in args.torrent_ids:
+            delete_torrent(client, torrent_id)
         return
 
     raise ValueError(f"Unsupported command: {args.command}")
@@ -110,6 +118,7 @@ def run(argv=None):
             client = build_client()
             for arg in argv:
                 handle_input(client, arg)
+            display_account_summary(client)
             return
 
         args = parser.parse_args(argv)
