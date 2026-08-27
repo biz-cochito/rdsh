@@ -22,7 +22,20 @@ class RealDebridClient:
             timeout=self.timeout,
             **kwargs,
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as exc:
+            try:
+                error_data = response.json()
+                if isinstance(error_data, dict) and "error" in error_data:
+                    error_msg = error_data.get("error")
+                    code = error_data.get("error_code")
+                    raise RuntimeError(
+                        f"Real-Debrid API error ({response.status_code}): {error_msg} (code {code})"
+                    ) from exc
+            except (ValueError, requests.exceptions.JSONDecodeError):
+                pass
+            raise exc
 
         if not response.content:
             return None
@@ -41,13 +54,8 @@ class RealDebridClient:
             return self.request(
                 "PUT",
                 "/torrents/addTorrent",
-                files={
-                    "file": (
-                        torrent_path.name,
-                        torrent_file,
-                        "application/x-bittorrent",
-                    )
-                },
+                data=torrent_file.read(),
+                headers={"Content-Type": "application/x-bittorrent"},
             )
 
     def get_torrent_info(self, torrent_id):
@@ -57,6 +65,9 @@ class RealDebridClient:
         return self.request(
             "POST", f"/torrents/selectFiles/{torrent_id}", data={"files": files}
         )
+
+    def delete_torrent(self, torrent_id):
+        return self.request("DELETE", f"/torrents/delete/{torrent_id}")
 
     def list_torrents(self, page=1, limit=None, status=None):
         params = {"page": page}

@@ -62,26 +62,19 @@ def test_handle_magnet_link_runs_expected_flow(monkeypatch):
     monkeypatch.setattr(
         commands,
         "wait_for_status",
-        lambda current_client, torrent_id, status: calls.append(("wait", torrent_id, status)),
+        lambda current_client, torrent_id, status: {"status": "waiting_files_selection"},
     )
     monkeypatch.setattr(
         commands,
         "select_all_files",
         lambda current_client, torrent_id: calls.append(("select", torrent_id)),
     )
-    monkeypatch.setattr(
-        commands,
-        "print_unrestricted_torrent_links",
-        lambda current_client, torrent_id: calls.append(("print", torrent_id)),
-    )
 
     commands.handle_magnet_link(client, "magnet:?xt=urn:btih:abc")
 
     assert calls == [
         ("add_magnet", "magnet:?xt=urn:btih:abc"),
-        ("wait", "torrent-123", "waiting_files_selection"),
         ("select", "torrent-123"),
-        ("print", "torrent-123"),
     ]
 
 
@@ -100,26 +93,19 @@ def test_handle_torrent_file_runs_expected_flow(monkeypatch, tmp_path):
     monkeypatch.setattr(
         commands,
         "wait_for_status",
-        lambda current_client, torrent_id, status: calls.append(("wait", torrent_id, status)),
+        lambda current_client, torrent_id, status: {"status": "waiting_files_selection"},
     )
     monkeypatch.setattr(
         commands,
         "select_all_files",
         lambda current_client, torrent_id: calls.append(("select", torrent_id)),
     )
-    monkeypatch.setattr(
-        commands,
-        "print_unrestricted_torrent_links",
-        lambda current_client, torrent_id: calls.append(("print", torrent_id)),
-    )
 
     commands.handle_torrent_file(client, str(torrent_file))
 
     assert calls == [
         ("add_torrent_file", str(torrent_file)),
-        ("wait", "torrent-456", "waiting_files_selection"),
         ("select", "torrent-456"),
-        ("print", "torrent-456"),
     ]
 
 
@@ -161,47 +147,7 @@ def test_show_torrent_info_prints_json(capsys):
     assert '"status": "downloaded"' in captured.out
 
 
-def test_play_magnet_in_mpv(monkeypatch):
-    calls = []
 
-    class FakeClient:
-        def add_magnet(self, magnet_link):
-            calls.append(("add_magnet", magnet_link))
-            return {"id": "torrent-789"}
-
-    client = FakeClient()
-
-    monkeypatch.setattr(
-        commands,
-        "wait_for_status",
-        lambda current_client, torrent_id, status: calls.append(
-            ("wait", torrent_id, status)
-        ),
-    )
-    monkeypatch.setattr(
-        commands,
-        "select_all_files",
-        lambda current_client, torrent_id: calls.append(("select", torrent_id)),
-    )
-    monkeypatch.setattr(
-        commands,
-        "print_unrestricted_torrent_links",
-        lambda current_client, torrent_id: ["https://direct.stream/link.mkv"],
-    )
-    monkeypatch.setattr(
-        commands.subprocess,
-        "run",
-        lambda cmd: calls.append(("subprocess", cmd)),
-    )
-
-    commands.play_magnet_in_mpv(client, "magnet:?xt=urn:btih:xyz")
-
-    assert calls == [
-        ("add_magnet", "magnet:?xt=urn:btih:xyz"),
-        ("wait", "torrent-789", "waiting_files_selection"),
-        ("select", "torrent-789"),
-        ("subprocess", ["mpv", "https://direct.stream/link.mkv"]),
-    ]
 
 
 def test_list_torrents_prints_json(capsys):
@@ -212,8 +158,54 @@ def test_list_torrents_prints_json(capsys):
             assert status == "downloaded"
             return [{"id": "torrent-123"}]
 
-    commands.list_torrents(FakeClient(), page=2, limit=10, status="downloaded")
+    commands.list_torrents(FakeClient(), page=2, limit=10, status="downloaded", json_output=True)
 
     captured = capsys.readouterr()
 
     assert '"id": "torrent-123"' in captured.out
+
+
+def test_list_torrents_prints_rich_format(capsys):
+    class FakeClient:
+        def list_torrents(self, page=1, limit=None, status=None):
+            return [{"id": "torrent-123", "filename": "movie.mkv", "bytes": 1024, "status": "downloaded"}]
+
+    commands.list_torrents(FakeClient())
+
+    captured = capsys.readouterr()
+
+    assert "torrent-123" in captured.out
+    assert "movie.mkv" in captured.out
+    assert "status: downloaded" in captured.out
+
+
+def test_display_account_summary_prints_in_progress_and_failed_count(capsys):
+    class FakeClient:
+        def list_torrents(self, limit=100):
+            return [
+                {
+                    "id": "t1",
+                    "filename": "movie1.mkv",
+                    "status": "downloading",
+                    "progress": 45,
+                    "speed": 2621440,
+                },
+                {
+                    "id": "t2",
+                    "filename": "movie2.mkv",
+                    "status": "error",
+                },
+                {
+                    "id": "t3",
+                    "filename": "movie3.mkv",
+                    "status": "downloaded",
+                },
+            ]
+
+    commands.display_account_summary(FakeClient())
+
+    captured = capsys.readouterr()
+
+    assert "In-Progress Downloads:" in captured.out
+    assert "• movie1.mkv [downloading\\] - 45% @ 2.5 MB/s" in captured.out
+    assert "Failed downloads: 1" in captured.out

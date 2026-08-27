@@ -1,28 +1,11 @@
 import json
-import subprocess
 import time
 from pathlib import Path
 
-from rdsh.client import RealDebridClient
+from rich import print
+
 from rdsh.config import POLL_INTERVAL_SECONDS, POLL_TIMEOUT_SECONDS
-
-
-def play_magnet_in_mpv(client, magnet: str):
-    result = client.add_magnet(magnet)
-    torrent_id = result.get("id") if isinstance(result, dict) else None
-
-    if not torrent_id:
-        raise RuntimeError(
-            "Real-Debrid did not return a torrent id for the magnet link."
-        )
-    wait_for_status(client, torrent_id, "waiting_files_selection")
-    select_all_files(client, torrent_id)
-    links = print_unrestricted_torrent_links(client, torrent_id)
-
-    if not links:
-        print("No links found")
-        return
-    subprocess.run(["mpv", links[0]])
+from rdsh.utils import format_bytes
 
 
 def unrestrict_link(client, host_link):
@@ -51,10 +34,13 @@ def wait_for_status(client, torrent_id: str, expected_status: str):
             if expected_status == "waiting_files_selection" and status in {
                 "downloading",
                 "downloaded",
+                "queued",
+                "compressing",
+                "uploading",
             }:
                 return info
 
-            if status in {"error", "virus", "dead"}:
+            if status in {"error", "virus", "dead", "magnet_error"}:
                 raise RuntimeError(f"Torrent failed with status '{status}'.")
 
         time.sleep(POLL_INTERVAL_SECONDS)
@@ -88,16 +74,17 @@ def print_unrestricted_torrent_links(client, torrent_id):
 
 def handle_magnet_link(client, magnet_link):
     result = client.add_magnet(magnet_link)
-    torrent_id = result.get("id")
+    torrent_id = result.get("id") if isinstance(result, dict) else None
 
     if not torrent_id:
         raise RuntimeError(
             "Real-Debrid did not return a torrent id for the magnet link."
         )
 
-    wait_for_status(client, torrent_id, "waiting_files_selection")
-    select_all_files(client, torrent_id)
-    print_unrestricted_torrent_links(client, torrent_id)
+    info = wait_for_status(client, torrent_id, "waiting_files_selection")
+    if isinstance(info, dict) and info.get("status") == "waiting_files_selection":
+        select_all_files(client, torrent_id)
+    print(f"Added magnet (ID: {torrent_id})")
 
 
 def handle_torrent_file(client, file_path):
@@ -106,16 +93,17 @@ def handle_torrent_file(client, file_path):
         raise FileNotFoundError(f"Torrent file not found: {file_path}")
 
     result = client.add_torrent_file(file_path)
-    torrent_id = result.get("id")
+    torrent_id = result.get("id") if isinstance(result, dict) else None
 
     if not torrent_id:
         raise RuntimeError(
             "Real-Debrid did not return a torrent id for the .torrent file."
         )
 
-    wait_for_status(client, torrent_id, "waiting_files_selection")
-    select_all_files(client, torrent_id)
-    print_unrestricted_torrent_links(client, torrent_id)
+    info = wait_for_status(client, torrent_id, "waiting_files_selection")
+    if isinstance(info, dict) and info.get("status") == "waiting_files_selection":
+        select_all_files(client, torrent_id)
+    print(f"Added torrent file: {torrent_path.name} (ID: {torrent_id})")
 
 
 def handle_input(client, value):
@@ -134,6 +122,70 @@ def show_torrent_info(client, torrent_id):
     print(json.dumps(client.get_torrent_info(torrent_id), indent=2, sort_keys=True))
 
 
-def list_torrents(client, page=1, limit=None, status=None):
+def delete_torrent(client, torrent_id):
+    torrent_info = client.get_torrent_info(torrent_id)
+    torrent_name = torrent_info.get("filename") if torrent_info else None
+    if torrent_info:
+        print(f"Deleting item: {torrent_name}")
+    else:
+        print(f"Item not found: {torrent_id}")
+        return
+    client.delete_torrent(torrent_id)
+    print(f"Deleted item: {torrent_name if torrent_name else torrent_id}")
+
+
+def list_torrents(client, page=1, limit=None, status=None, json_output=False):
     torrents = client.list_torrents(page=page, limit=limit, status=status)
-    print(json.dumps(torrents, indent=2, sort_keys=True))
+    if json_output:
+        print(json.dumps(torrents, indent=2, sort_keys=True))
+    else:
+        for i, item in enumerate(torrents):
+            status_color = {"downloaded": "green", "downloading": "yellow"}.get(
+                item["status"], "red"
+            )
+            file_size = format_bytes(item["bytes"])
+            print(
+                f"{item['id']} - [{status_color}]{item['filename']}[/{status_color}] - {file_size} - status: {item['status']}"
+            )
+
+
+def display_account_summary(client):
+    torrents = client.list_torrents(limit=100)
+    if not isinstance(torrents, list):
+        print("Failed downloads: 0")
+        return
+
+    in_progress_statuses = {
+        "magnet_conversion",
+        "waiting_files_selection",
+        "queued",
+        "downloading",
+        "compressing",
+        "uploading",
+    }
+    failed_statuses = {"error", "virus", "dead", "magnet_error"}
+
+    in_progress = [
+        t
+        for t in torrents
+        if isinstance(t, dict) and t.get("status") in in_progress_statuses
+    ]
+    failed_count = sum(
+        1
+        for t in torrents
+        if isinstance(t, dict) and t.get("status") in failed_statuses
+    )
+
+    print("\nIn-Progress Downloads:")
+    if not in_progress:
+        print("  None")
+    else:
+        for t in in_progress:
+            filename = t.get("filename") or t.get("id") or "Unknown"
+            status = t.get("status", "unknown")
+            progress = t.get("progress", 0)
+            speed = t.get("speed")
+            speed_str = f" @ {format_bytes(speed)}/s" if speed else ""
+            print(f"  • {filename} [{status}] - {progress}%{speed_str}".replace("[", r"\[").replace("]", r"\]"))
+
+    print(f"\nFailed downloads: {failed_count}")

@@ -41,14 +41,12 @@ def test_add_torrent_file_uploads_expected_payload(monkeypatch, tmp_path):
     result = client.add_torrent_file(torrent_file)
 
     upload_call = calls[0]
-    uploaded_name, uploaded_file, content_type = upload_call[2]["files"]["file"]
 
     assert result == {"id": "torrent-456"}
     assert upload_call[0] == "PUT"
     assert upload_call[1] == "/torrents/addTorrent"
-    assert uploaded_name == "sample.torrent"
-    assert Path(uploaded_file.name) == torrent_file
-    assert content_type == "application/x-bittorrent"
+    assert upload_call[2]["data"] == b"torrent-data"
+    assert upload_call[2]["headers"] == {"Content-Type": "application/x-bittorrent"}
 
 
 def test_list_torrents_passes_optional_params(monkeypatch):
@@ -67,3 +65,38 @@ def test_list_torrents_passes_optional_params(monkeypatch):
     assert calls == [
         ("GET", "/torrents", {"params": {"page": 2, "limit": 25, "status": "downloaded"}})
     ]
+
+
+def test_delete_torrent(monkeypatch):
+    calls = []
+
+    def fake_request(method, path, **kwargs):
+        calls.append((method, path, kwargs))
+        return None
+
+    client = RealDebridClient("token-123")
+    monkeypatch.setattr(client, "request", fake_request)
+
+    client.delete_torrent("torrent-abc")
+
+    assert calls == [
+        ("DELETE", "/torrents/delete/torrent-abc", {})
+    ]
+
+
+def test_request_raises_detailed_api_error(monkeypatch):
+    import requests
+
+    response = Mock()
+    response.status_code = 400
+    response.raise_for_status.side_effect = requests.exceptions.HTTPError("400 Client Error")
+    response.json.return_value = {"error": "bad_token", "error_code": 8}
+
+    monkeypatch.setattr("rdsh.client.requests.request", lambda *args, **kwargs: response)
+
+    client = RealDebridClient("bad-token")
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="Real-Debrid API error \\(400\\): bad_token \\(code 8\\)"):
+        client.request("GET", "/torrents")
