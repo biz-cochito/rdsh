@@ -49,7 +49,8 @@ def build_parser():
         "torrent-info", help="Show info for a torrent id"
     )
     info_parser.add_argument("torrent_ids", nargs="+", help="Real-Debrid torrent ids")
-
+    info_parser.add_argument("--json", action="store_true", help="Output raw JSON")
+    
     list_parser = subparsers.add_parser("list-torrents", help="List available torrents")
     list_parser.add_argument(
         "--page", type=int, default=1, help="Results page to fetch"
@@ -92,7 +93,7 @@ def dispatch_command(client, args):
 
     if args.command == "torrent-info":
         for torrent_id in args.torrent_ids:
-            show_torrent_info(client, torrent_id)
+            show_torrent_info(client, torrent_id, json_output=args.json)
         return
 
     if args.command == "list-torrents":

@@ -2,6 +2,8 @@ import json
 import time
 from pathlib import Path
 
+from datetime import datetime
+
 from rich import print
 from rich.markup import escape
 
@@ -119,8 +121,29 @@ def handle_input(client, value):
     unrestrict_link(client, value)
 
 
-def show_torrent_info(client, torrent_id):
-    print(json.dumps(client.get_torrent_info(torrent_id), indent=2, sort_keys=True))
+def show_torrent_info(client, torrent_id, json_output=False):
+    info = client.get_torrent_info(torrent_id)
+    if json_output:
+        print(json.dumps(info, indent=2, sort_keys=True))
+    else:
+        status_color = {"downloaded": "cyan", "downloading": "yellow"}.get(
+            info.get("status"), "red"
+        )
+        file_size = str(format_bytes(info.get("bytes", 0)))
+        dt = datetime.fromisoformat(info.get("added", 0)) if isinstance(info.get("added", 0), str) else datetime.fromtimestamp(info.get("added", 0))
+        
+        print(f"Name: [{status_color}]{info.get('filename')}[/{status_color}]")
+        print(f"Torrent ID: {torrent_id}")
+        print(f"Size: {file_size}")
+        print(f"Added: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Status: {info.get('status')}")
+        print(f"Progress: {info.get('progress', 0)}%")
+        print("\nFiles:")
+        for file in info.get("files", []):
+            print(f"  \"{file.get('path', 'Unknown')}\"")
+        print("\nLinks:")
+        for link in info.get("links", []):
+            print(f"  {link}")
 
 
 def delete_torrent(client, torrent_id):
