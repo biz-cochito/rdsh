@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 
 from rich import print
+from rich.markup import escape
 
 from rdsh.config import POLL_INTERVAL_SECONDS, POLL_TIMEOUT_SECONDS
 from rdsh.utils import format_bytes
@@ -150,6 +151,48 @@ def list_torrents(client, page=1, limit=None, status=None, json_output=False):
             file_size = format_bytes(item["bytes"])
             print(
                 f"{item['id']} - [{status_color}]{item['filename']}[/{status_color}] - {file_size} - status: {item['status']}"
+            )
+
+
+def dedupe_torrents(client):
+    torrents = client.list_torrents(limit=100)
+    grouped = {}
+
+    for torrent in torrents:
+        if not isinstance(torrent, dict):
+            continue
+
+        filename = torrent.get("filename")
+        if not filename:
+            continue
+
+        grouped.setdefault(filename, []).append(torrent)
+
+    duplicate_groups = [group for group in grouped.values() if len(group) > 1]
+
+    if not duplicate_groups:
+        print("No duplicate torrents found.")
+        return
+
+    for group in duplicate_groups:
+        keeper = next(
+            (item for item in group if item.get("status") == "downloaded"), group[0]
+        )
+        print(
+            escape(
+                f"Keeping torrent: {keeper.get('id')} [{keeper.get('status', 'unknown')}] {keeper.get('filename')}"
+            )
+        )
+
+        for torrent in group:
+            if torrent is keeper:
+                continue
+
+            client.delete_torrent(torrent["id"])
+            print(
+                escape(
+                    f"Deleted duplicate: {torrent.get('id')} [{torrent.get('status', 'unknown')}] {torrent.get('filename')}"
+                )
             )
 
 
