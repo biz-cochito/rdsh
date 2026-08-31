@@ -209,3 +209,66 @@ def test_display_account_summary_prints_in_progress_and_failed_count(capsys):
     assert "In-Progress Downloads:" in captured.out
     assert "• movie1.mkv [downloading\\] - 45% @ 2.5 MB/s" in captured.out
     assert "Failed downloads: 1" in captured.out
+
+
+def test_dedupe_torrents_prefers_downloaded_duplicate(capsys):
+    deleted_ids = []
+
+    class FakeClient:
+        def list_torrents(self, limit=100):
+            return [
+                {"id": "t1", "filename": "movie.mkv", "status": "downloading"},
+                {"id": "t2", "filename": "movie.mkv", "status": "downloaded"},
+                {"id": "t3", "filename": "other.mkv", "status": "downloaded"},
+            ]
+
+        def delete_torrent(self, torrent_id):
+            deleted_ids.append(torrent_id)
+
+    commands.dedupe_torrents(FakeClient())
+
+    captured = capsys.readouterr()
+
+    assert deleted_ids == ["t1"]
+    assert "Keeping torrent: t2 [downloaded] movie.mkv" in captured.out
+    assert "Deleted duplicate: t1 [downloading] movie.mkv" in captured.out
+
+
+def test_dedupe_torrents_keeps_first_when_no_duplicate_is_downloaded(capsys):
+    deleted_ids = []
+
+    class FakeClient:
+        def list_torrents(self, limit=100):
+            return [
+                {"id": "t1", "filename": "movie.mkv", "status": "queued"},
+                {"id": "t2", "filename": "movie.mkv", "status": "downloading"},
+            ]
+
+        def delete_torrent(self, torrent_id):
+            deleted_ids.append(torrent_id)
+
+    commands.dedupe_torrents(FakeClient())
+
+    captured = capsys.readouterr()
+
+    assert deleted_ids == ["t2"]
+    assert "Keeping torrent: t1 [queued] movie.mkv" in captured.out
+    assert "Deleted duplicate: t2 [downloading] movie.mkv" in captured.out
+
+
+def test_dedupe_torrents_prints_message_when_no_duplicates_exist(capsys):
+    class FakeClient:
+        def list_torrents(self, limit=100):
+            return [
+                {"id": "t1", "filename": "movie.mkv", "status": "downloaded"},
+                {"id": "t2", "filename": "show.mkv", "status": "queued"},
+            ]
+
+        def delete_torrent(self, torrent_id):
+            raise AssertionError(f"unexpected delete: {torrent_id}")
+
+    commands.dedupe_torrents(FakeClient())
+
+    captured = capsys.readouterr()
+
+    assert "No duplicate torrents found." in captured.out
