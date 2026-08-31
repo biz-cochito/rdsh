@@ -22,13 +22,9 @@ export REAL_DEBRID_API_TOKEN="your-api-token-here"
 #### Option A: Using `uv tool` (Recommended)
 
 ```bash
+git clone https://github.com/biz-cochito/rdsh.git
+cd rdsh
 uv tool install .
-```
-
-Or install in editable mode (so local code updates take effect automatically):
-
-```bash
-uv tool install --editable .
 ```
 
 _Note: Make sure `~/.local/bin` is in your `$PATH`. You can run `uv tool update-shell` to handle this._

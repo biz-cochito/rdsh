@@ -127,7 +127,7 @@ def delete_torrent(client, torrent_id):
     torrent_name = torrent_info.get("filename") if torrent_info else None
     if torrent_info:
         confirm = input(f"Are you sure you want to delete {torrent_name}? (y/n): ")
-        if confirm.lower() != 'y':
+        if confirm.lower() != "y":
             print("Deletion cancelled.")
             return
         print(f"Deleting item: {torrent_name}")
@@ -144,10 +144,10 @@ def list_torrents(client, page=1, limit=None, status=None, json_output=False):
         print(json.dumps(torrents, indent=2, sort_keys=True))
     else:
         for i, item in enumerate(torrents):
-            status_color = {"downloaded": "green", "downloading": "yellow"}.get(
+            status_color = {"downloaded": "cyan", "downloading": "yellow"}.get(
                 item["status"], "red"
             )
-            file_size = format_bytes(item["bytes"])
+            file_size = str(format_bytes(item["bytes"]))
             print(
                 f"{item['id']} - [{status_color}]{item['filename']}[/{status_color}] - {file_size} - status: {item['status']}"
             )
@@ -190,6 +190,10 @@ def display_account_summary(client):
             progress = t.get("progress", 0)
             speed = t.get("speed")
             speed_str = f" @ {format_bytes(speed)}/s" if speed else ""
-            print(f"  • {filename} [{status}] - {progress}%{speed_str}".replace("[", r"\[").replace("]", r"\]"))
+            print(
+                f"  • {filename} [{status}] - {progress}%{speed_str}".replace(
+                    "[", r"\["
+                ).replace("]", r"\]")
+            )
 
     print(f"\nFailed downloads: {failed_count}")
