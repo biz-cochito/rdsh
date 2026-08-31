@@ -5,6 +5,7 @@ import requests
 
 from rdsh.client import RealDebridClient
 from rdsh.commands import (
+    dedupe_torrents,
     delete_torrent,
     display_account_summary,
     handle_input,
@@ -62,6 +63,11 @@ def build_parser():
     )
     delete_parser.add_argument("torrent_ids", nargs="+", help="Real-Debrid torrent ids to delete")
 
+    subparsers.add_parser(
+        "dedupe-torrents",
+        help="Delete duplicate torrents by filename, preferring downloaded items",
+    )
+
     return parser
 
 
@@ -96,6 +102,10 @@ def dispatch_command(client, args):
     if args.command == "delete":
         for torrent_id in args.torrent_ids:
             delete_torrent(client, torrent_id)
+        return
+
+    if args.command == "dedupe-torrents":
+        dedupe_torrents(client)
         return
 
     raise ValueError(f"Unsupported command: {args.command}")
