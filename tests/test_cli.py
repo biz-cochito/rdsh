@@ -106,6 +106,22 @@ def test_run_dispatches_delete_subcommand(monkeypatch):
     assert calls == [(client, "torrent-123"), (client, "torrent-456")]
 
 
+def test_run_dispatches_dedupe_torrents_subcommand(monkeypatch):
+    client = object()
+    calls = []
+
+    monkeypatch.setattr(cli, "build_client", lambda: client)
+    monkeypatch.setattr(
+        cli,
+        "dedupe_torrents",
+        lambda built_client: calls.append(built_client),
+    )
+
+    cli.run(["dedupe-torrents"])
+
+    assert calls == [client]
+
+
 
 
 def test_run_exits_with_usage_when_no_args(capsys):

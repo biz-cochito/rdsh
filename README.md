@@ -90,6 +90,14 @@ Display detailed JSON metadata for Real-Debrid internal torrent ID(s):
 rdsh torrent-info <TORRENT_ID>
 ```
 
+#### Dedupe Account Torrents (`dedupe-torrents`)
+
+Delete duplicate torrents grouped by filename, keeping a downloaded item when one exists:
+
+```bash
+rdsh dedupe-torrents
+```
+
 ---
 
 ## Development & Testing
