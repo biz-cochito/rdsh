@@ -8,6 +8,7 @@ from rdsh.commands import (
     dedupe_torrents,
     delete_torrent,
     display_account_summary,
+    get_existing_filenames,
     handle_input,
     list_torrents,
     show_torrent_info,
@@ -30,6 +31,14 @@ def build_client():
 
 def build_parser():
     parser = argparse.ArgumentParser(prog="rdsh")
+    parser.add_argument(
+        "-s",
+        "--skip-existing",
+        "--skip-duplicates",
+        dest="skip_existing",
+        action="store_true",
+        help="Skip items that already exist in account",
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     unrestrict_parser = subparsers.add_parser(
@@ -38,12 +47,36 @@ def build_parser():
     unrestrict_parser.add_argument(
         "values", nargs="+", help="Hosted links, magnet links, or .torrent paths"
     )
+    unrestrict_parser.add_argument(
+        "-s",
+        "--skip-existing",
+        "--skip-duplicates",
+        dest="skip_existing",
+        action="store_true",
+        help="Skip items that already exist in account",
+    )
 
     magnet_parser = subparsers.add_parser("add-magnet", help="Add a magnet link")
     magnet_parser.add_argument("magnet_links", nargs="+", help="Magnet URIs to add")
+    magnet_parser.add_argument(
+        "-s",
+        "--skip-existing",
+        "--skip-duplicates",
+        dest="skip_existing",
+        action="store_true",
+        help="Skip items that already exist in account",
+    )
 
     torrent_parser = subparsers.add_parser("add-torrent", help="Add a .torrent file")
     torrent_parser.add_argument("file_paths", nargs="+", help="Paths to .torrent files")
+    torrent_parser.add_argument(
+        "-s",
+        "--skip-existing",
+        "--skip-duplicates",
+        dest="skip_existing",
+        action="store_true",
+        help="Skip items that already exist in account",
+    )
 
     info_parser = subparsers.add_parser(
         "torrent-info", help="Show info for a torrent id"
@@ -60,7 +93,7 @@ def build_parser():
     list_parser.add_argument("--json", action="store_true", help="Output raw JSON")
 
     delete_parser = subparsers.add_parser(
-        "delete", help="Delete one or more torrents by their ids"
+        "delete-torrent", aliases=["delete"], help="Delete one or more torrents by their ids"
     )
     delete_parser.add_argument("torrent_ids", nargs="+", help="Real-Debrid torrent ids to delete")
 
@@ -73,21 +106,24 @@ def build_parser():
 
 
 def dispatch_command(client, args):
+    skip_existing = getattr(args, "skip_existing", False)
+    existing_filenames = get_existing_filenames(client) if skip_existing else None
+
     if args.command == "unrestrict":
         for val in args.values:
-            handle_input(client, val)
+            handle_input(client, val, skip_existing=skip_existing, existing_filenames=existing_filenames)
         display_account_summary(client)
         return
 
     if args.command == "add-magnet":
         for link in args.magnet_links:
-            handle_input(client, link)
+            handle_input(client, link, skip_existing=skip_existing, existing_filenames=existing_filenames)
         display_account_summary(client)
         return
 
     if args.command == "add-torrent":
         for path in args.file_paths:
-            handle_input(client, path)
+            handle_input(client, path, skip_existing=skip_existing, existing_filenames=existing_filenames)
         display_account_summary(client)
         return
 
@@ -100,7 +136,7 @@ def dispatch_command(client, args):
         list_torrents(client, page=args.page, limit=args.limit, status=args.status, json_output=args.json)
         return
 
-    if args.command == "delete":
+    if args.command in ("delete-torrent", "delete"):
         for torrent_id in args.torrent_ids:
             delete_torrent(client, torrent_id)
         return
@@ -121,14 +157,19 @@ def run(argv=None):
         raise SystemExit(1)
 
     try:
-        if (
-            argv[0].startswith("magnet:")
-            or argv[0].lower().endswith(".torrent")
-            or "://" in argv[0]
+        raw_flags = {"-s", "--skip-existing", "--skip-duplicates"}
+        skip_existing = any(arg in raw_flags for arg in argv)
+        positional_args = [arg for arg in argv if arg not in raw_flags]
+
+        if positional_args and (
+            positional_args[0].startswith("magnet:")
+            or positional_args[0].lower().endswith(".torrent")
+            or "://" in positional_args[0]
         ):
             client = build_client()
-            for arg in argv:
-                handle_input(client, arg)
+            existing_filenames = get_existing_filenames(client) if skip_existing else None
+            for arg in positional_args:
+                handle_input(client, arg, skip_existing=skip_existing, existing_filenames=existing_filenames)
             display_account_summary(client)
             return
 

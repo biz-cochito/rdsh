@@ -31,7 +31,7 @@ def test_run_routes_legacy_argument(monkeypatch):
     calls = []
 
     monkeypatch.setattr(cli, "build_client", lambda: client)
-    monkeypatch.setattr(cli, "handle_input", lambda built_client, value: calls.append((built_client, value)))
+    monkeypatch.setattr(cli, "handle_input", lambda built_client, value, *args, **kwargs: calls.append((built_client, value)))
     monkeypatch.setattr(cli, "display_account_summary", lambda built_client: None)
 
     cli.run(["magnet:?xt=urn:btih:abc"])
@@ -44,7 +44,7 @@ def test_run_dispatches_unrestrict_subcommand(monkeypatch):
     calls = []
 
     monkeypatch.setattr(cli, "build_client", lambda: client)
-    monkeypatch.setattr(cli, "handle_input", lambda built_client, value: calls.append((built_client, value)))
+    monkeypatch.setattr(cli, "handle_input", lambda built_client, value, *args, **kwargs: calls.append((built_client, value)))
     monkeypatch.setattr(cli, "display_account_summary", lambda built_client: None)
 
     cli.run(["unrestrict", "https://example.com/file"])
@@ -60,7 +60,7 @@ def test_run_dispatches_torrent_info_subcommand(monkeypatch):
     monkeypatch.setattr(
         cli,
         "show_torrent_info",
-        lambda built_client, torrent_id: calls.append((built_client, torrent_id)),
+        lambda built_client, torrent_id, json_output=False: calls.append((built_client, torrent_id)),
     )
 
     cli.run(["torrent-info", "torrent-123"])
@@ -101,7 +101,7 @@ def test_run_dispatches_delete_subcommand(monkeypatch):
         lambda built_client, torrent_id: calls.append((built_client, torrent_id)),
     )
 
-    cli.run(["delete", "torrent-123", "torrent-456"])
+    cli.run(["delete-torrent", "torrent-123", "torrent-456"])
 
     assert calls == [(client, "torrent-123"), (client, "torrent-456")]
 
@@ -124,6 +124,40 @@ def test_run_dispatches_dedupe_torrents_subcommand(monkeypatch):
 
 
 
+def test_build_parser_supports_skip_existing_flags():
+    parser = cli.build_parser()
+    
+    args, _ = parser.parse_known_args(["add-torrent", "-s", "file.torrent"])
+    assert args.skip_existing is True
+
+    args, _ = parser.parse_known_args(["add-magnet", "--skip-existing", "magnet:?xt=urn:btih:123"])
+    assert args.skip_existing is True
+
+    args, _ = parser.parse_known_args(["unrestrict", "--skip-duplicates", "https://example.com/file"])
+    assert args.skip_existing is True
+
+
+def test_dispatch_command_passes_skip_existing(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        pass
+
+    monkeypatch.setattr(
+        cli,
+        "handle_input",
+        lambda client, val, skip_existing=False, existing_filenames=None: calls.append((val, skip_existing)),
+    )
+    monkeypatch.setattr(cli, "display_account_summary", lambda client: None)
+    monkeypatch.setattr(cli, "get_existing_filenames", lambda client: {"existing.mkv"})
+
+    parser = cli.build_parser()
+    args, _ = parser.parse_known_args(["add-magnet", "-s", "magnet:?xt=urn:btih:123"])
+    cli.dispatch_command(FakeClient(), args)
+
+    assert calls == [("magnet:?xt=urn:btih:123", True)]
+
+
 def test_run_exits_with_usage_when_no_args(capsys):
     with pytest.raises(SystemExit) as exc_info:
         cli.run([])
@@ -137,7 +171,7 @@ def test_run_exits_with_usage_when_no_args(capsys):
 def test_run_prints_error_and_exits(monkeypatch, capsys):
     monkeypatch.setattr(cli, "build_client", lambda: object())
 
-    def raise_error(client, value):
+    def raise_error(client, value, *args, **kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(cli, "handle_input", raise_error)

@@ -59,6 +59,10 @@ rdsh "magnet:?xt=urn:btih:..."
 # Add a local .torrent file
 rdsh "/path/to/file.torrent"
 
+# Skip files or magnets already in your account (-s / --skip-existing / --skip-duplicates)
+rdsh -s "magnet:?xt=urn:btih:..."
+rdsh add-torrent --skip-existing "/path/to/file.torrent"
+
 # Process multiple mixed inputs sequentially
 rdsh "https://example.com/file1" "magnet:?xt=..." "/path/to/file2.torrent"
 ```
@@ -97,6 +101,16 @@ Delete duplicate torrents grouped by filename, keeping a downloaded item when on
 ```bash
 rdsh dedupe-torrents
 ```
+
+#### Delete Torrents (`delete-torrent`)
+
+Delete one or more torrents by their Real-Debrid internal IDs:
+
+```bash
+rdsh delete-torrent <TORRENT_ID1> <TORRENT_ID2>
+```
+
+*(Note: `delete` can also be used as a shorthand alias).*
 
 ---
 
