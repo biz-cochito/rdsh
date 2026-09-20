@@ -1,8 +1,28 @@
 import json
 import time
+import urllib.parse
+from datetime import datetime
 from pathlib import Path
 
-from datetime import datetime
+
+def extract_magnet_dn(magnet_link: str) -> str | None:
+    parsed = urllib.parse.urlparse(magnet_link)
+    query_params = urllib.parse.parse_qs(parsed.query)
+    dn_list = query_params.get("dn")
+    if dn_list and dn_list[0]:
+        return dn_list[0]
+    return None
+
+
+def get_existing_filenames(client) -> set[str]:
+    torrents = client.list_torrents(limit=100)
+    filenames = set()
+    if isinstance(torrents, list):
+        for item in torrents:
+            if isinstance(item, dict) and item.get("filename"):
+                filenames.add(str(item["filename"]).lower())
+    return filenames
+
 
 from rich import print
 from rich.markup import escape
@@ -75,7 +95,15 @@ def print_unrestricted_torrent_links(client, torrent_id):
     return unrestricted_links
 
 
-def handle_magnet_link(client, magnet_link):
+def handle_magnet_link(client, magnet_link, skip_existing=False, existing_filenames=None):
+    if skip_existing:
+        if existing_filenames is None:
+            existing_filenames = get_existing_filenames(client)
+        dn = extract_magnet_dn(magnet_link)
+        if dn and dn.lower() in existing_filenames:
+            print(f"Skipped (already exists): {dn}")
+            return
+
     result = client.add_magnet(magnet_link)
     torrent_id = result.get("id") if isinstance(result, dict) else None
 
@@ -90,10 +118,19 @@ def handle_magnet_link(client, magnet_link):
     print(f"Added magnet (ID: {torrent_id})")
 
 
-def handle_torrent_file(client, file_path):
+def handle_torrent_file(client, file_path, skip_existing=False, existing_filenames=None):
     torrent_path = Path(file_path)
     if not torrent_path.is_file():
         raise FileNotFoundError(f"Torrent file not found: {file_path}")
+
+    if skip_existing:
+        if existing_filenames is None:
+            existing_filenames = get_existing_filenames(client)
+        name_lower = torrent_path.name.lower()
+        stem_lower = torrent_path.stem.lower()
+        if name_lower in existing_filenames or stem_lower in existing_filenames:
+            print(f"Skipped (already exists): {torrent_path.name}")
+            return
 
     result = client.add_torrent_file(file_path)
     torrent_id = result.get("id") if isinstance(result, dict) else None
@@ -109,13 +146,13 @@ def handle_torrent_file(client, file_path):
     print(f"Added torrent file: {torrent_path.name} (ID: {torrent_id})")
 
 
-def handle_input(client, value):
+def handle_input(client, value, skip_existing=False, existing_filenames=None):
     if value.startswith("magnet:"):
-        handle_magnet_link(client, value)
+        handle_magnet_link(client, value, skip_existing=skip_existing, existing_filenames=existing_filenames)
         return
 
     if value.lower().endswith(".torrent"):
-        handle_torrent_file(client, value)
+        handle_torrent_file(client, value, skip_existing=skip_existing, existing_filenames=existing_filenames)
         return
 
     unrestrict_link(client, value)
@@ -130,8 +167,12 @@ def show_torrent_info(client, torrent_id, json_output=False):
             info.get("status"), "red"
         )
         file_size = str(format_bytes(info.get("bytes", 0)))
-        dt = datetime.fromisoformat(info.get("added", 0)) if isinstance(info.get("added", 0), str) else datetime.fromtimestamp(info.get("added", 0))
-        
+        dt = (
+            datetime.fromisoformat(info.get("added", 0))
+            if isinstance(info.get("added", 0), str)
+            else datetime.fromtimestamp(info.get("added", 0))
+        )
+
         print(f"Name: [{status_color}]{info.get('filename')}[/{status_color}]")
         print(f"Torrent ID: {torrent_id}")
         print(f"Size: {file_size}")
@@ -140,7 +181,7 @@ def show_torrent_info(client, torrent_id, json_output=False):
         print(f"Progress: {info.get('progress', 0)}%")
         print("\nFiles:")
         for file in info.get("files", []):
-            print(f"  \"{file.get('path', 'Unknown')}\"")
+            print(f'  "{file.get("path", "Unknown")}"')
         print("\nLinks:")
         for link in info.get("links", []):
             print(f"  {link}")

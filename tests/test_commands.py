@@ -114,13 +114,13 @@ def test_handle_input_routes_by_input_type(monkeypatch):
     client = object()
 
     monkeypatch.setattr(
-        commands, "handle_magnet_link", lambda current_client, value: calls.append(("magnet", current_client, value))
+        commands, "handle_magnet_link", lambda current_client, value, *args, **kwargs: calls.append(("magnet", current_client, value))
     )
     monkeypatch.setattr(
-        commands, "handle_torrent_file", lambda current_client, value: calls.append(("torrent", current_client, value))
+        commands, "handle_torrent_file", lambda current_client, value, *args, **kwargs: calls.append(("torrent", current_client, value))
     )
     monkeypatch.setattr(
-        commands, "unrestrict_link", lambda current_client, value: calls.append(("link", current_client, value))
+        commands, "unrestrict_link", lambda current_client, value, *args, **kwargs: calls.append(("link", current_client, value))
     )
 
     commands.handle_input(client, "magnet:?xt=urn:btih:abc")
@@ -139,7 +139,7 @@ def test_show_torrent_info_prints_json(capsys):
         def get_torrent_info(self, torrent_id):
             return {"id": torrent_id, "status": "downloaded"}
 
-    commands.show_torrent_info(FakeClient(), "torrent-123")
+    commands.show_torrent_info(FakeClient(), "torrent-123", json_output=True)
 
     captured = capsys.readouterr()
 
@@ -272,3 +272,55 @@ def test_dedupe_torrents_prints_message_when_no_duplicates_exist(capsys):
     captured = capsys.readouterr()
 
     assert "No duplicate torrents found." in captured.out
+
+
+def test_get_existing_filenames_returns_lowercased_set():
+    class FakeClient:
+        def list_torrents(self, limit=100):
+            return [
+                {"id": "1", "filename": "Movie.mkv"},
+                {"id": "2", "filename": "Show.S01E01.torrent"},
+            ]
+
+    result = commands.get_existing_filenames(FakeClient())
+    assert result == {"movie.mkv", "show.s01e01.torrent"}
+
+
+def test_handle_torrent_file_skips_when_filename_exists(capsys, tmp_path):
+    torrent_file = tmp_path / "movie.mkv.torrent"
+    torrent_file.write_bytes(b"data")
+
+    class FakeClient:
+        def list_torrents(self, limit=100):
+            return [{"id": "1", "filename": "movie.mkv"}]
+
+        def add_torrent_file(self, file_path):
+            raise AssertionError("Should not be called when skipping")
+
+    commands.handle_torrent_file(
+        FakeClient(),
+        str(torrent_file),
+        skip_existing=True,
+    )
+
+    captured = capsys.readouterr()
+    assert "Skipped (already exists): movie.mkv.torrent" in captured.out
+
+
+def test_handle_magnet_link_skips_when_dn_exists(capsys):
+    class FakeClient:
+        def list_torrents(self, limit=100):
+            return [{"id": "1", "filename": "Ubuntu"}]
+
+        def add_magnet(self, magnet_link):
+            raise AssertionError("Should not be called when skipping")
+
+    commands.handle_magnet_link(
+        FakeClient(),
+        "magnet:?xt=urn:btih:123&dn=Ubuntu",
+        skip_existing=True,
+    )
+
+    captured = capsys.readouterr()
+    assert "Skipped (already exists): Ubuntu" in captured.out
+
